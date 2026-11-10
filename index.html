@@ -180,6 +180,7 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .dash{display:grid;gap:8px}
 .dash-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px}
 .chip.mode[aria-pressed="true"]{background:var(--pink);border-color:var(--pink);color:var(--dark-ink)}
+.btn.jump{width:100%;height:72px;background:var(--lime);color:var(--dark-ink);font-family:var(--pixel);font-weight:400;font-size:20px;letter-spacing:.08em;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #run{display:block;width:100%;height:170px;border-radius:14px;border:2px solid var(--line);background:var(--void);touch-action:manipulation;cursor:pointer;-webkit-user-select:none;user-select:none}
 @media (max-width:480px){#run{height:140px}}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);background:var(--gold);color:var(--dark-ink);border:3px solid #000;border-radius:14px;padding:10px 16px;font-weight:800;font-size:17px;box-shadow:0 6px 0 #000;text-align:center}
@@ -231,7 +232,7 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
     <ol>
       <li><b>1</b>Press PLAY</li>
       <li><b>2</b>Tap squares to add sounds</li>
-      <li><b>3</b>Tap the runner to jump</li>
+      <li><b>3</b>Press 🎮 Play, then JUMP the spikes</li>
       <li><b>4</b>Hold DROP, then let go!</li>
     </ol>
     <button class="btn sm" id="howtoOk">Got it</button>
@@ -254,9 +255,10 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 
   <section class="dash" aria-label="Beat Runner game">
     <div class="dash-head"><span class="lbl">Beat Runner · jump the spikes</span>
-      <div class="chips" role="group" aria-label="Runner mode"><button class="chip mode" id="modeAuto" aria-pressed="true">Auto run</button><button class="chip mode" id="modeYou" aria-pressed="false">You jump</button></div></div>
+      <div class="chips" role="group" aria-label="Runner mode"><button class="chip mode" id="modeAuto" aria-pressed="true">🤖 Watch</button><button class="chip mode" id="modeYou" aria-pressed="false">🎮 Play</button></div></div>
     <canvas id="run" role="img" aria-label="A cube running along your beat. Each kick is a spike to jump."></canvas>
-    <p class="msg" id="runHint">Your kicks are the spikes. Tap the runner to take control.</p>
+    <button class="btn jump" id="jumpBtn" hidden>JUMP!</button>
+    <p class="msg" id="runHint">Your kicks are the spikes. Press 🎮 Play to have a go!</p>
   </section>
 
   <section class="grid-wrap" aria-label="Levels">
@@ -597,7 +599,8 @@ function runPos(){
   const T=ctx.currentTime-(ctx.outputLatency||0),sd=stepDur();let e=timeline[0];for(const x of timeline)if(x.t<=T)e=x;
   return{p:e.k+(T-e.t)/sd,T,sd}}
 function setMode(m){RUN.mode=m;$('modeAuto').setAttribute('aria-pressed',m==='auto');$('modeYou').setAttribute('aria-pressed',m==='you');
-  $('runHint').textContent=m==='you'?'Tap the runner (or press Space) to jump. Jump the spikes and grab the coins!':'Your kicks are the spikes. Tap the runner to take control.';
+  $('jumpBtn').hidden=m!=='you';
+  $('runHint').textContent=m==='you'?'Press JUMP (or tap the game, or press Space) just before each spike. Grab the coins too!':'Your kicks are the spikes. Press 🎮 Play to have a go!';
   RUN.streak=0;RUN.tries=1;RUN.ghostUntil=-1;RUN.lastK=null}
 function runJump(){
   if(RUN.mode!=='you')setMode('you');
@@ -831,7 +834,15 @@ dropB.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('button,input'))return;
   if(RUN.mode==='you'&&(e.code==='Space'||e.code==='ArrowUp')){e.preventDefault();if(!e.repeat)runJump();return}
   if(e.code==='Space'){e.preventDefault();playing?stop():start()}});
-rc.addEventListener('pointerdown',e=>{e.preventDefault();runJump()});
+// jump on touch-down for good timing; on iPhone and iPad the very first touch can only start the sound when the finger lifts
+function onPress(el,fn){
+  el.addEventListener('pointerdown',e=>{e.preventDefault();if(ctx&&ctx.state==='running'){el._wait=false;fn()}else el._wait=true});
+  el.addEventListener('pointerup',()=>{if(el._wait){el._wait=false;ensureAudio();fn()}});
+  el.addEventListener('click',e=>{if(e.detail===0)fn()});   // keyboard
+  el.addEventListener('contextmenu',e=>e.preventDefault())}
+onPress(rc,runJump);onPress($('jumpBtn'),runJump);
+// safety net: if the sound was started by a touch-down and the phone kept it paused, wake it on the next lift or click
+['touchend','pointerup','click','keydown'].forEach(ev=>document.addEventListener(ev,()=>{if(ctx&&ctx.state!=='running')ctx.resume()},true));
 $('modeAuto').onclick=()=>setMode('auto');$('modeYou').onclick=()=>{setMode('you');ensureAudio();if(!playing)start()};
 
 setBpm(state.bpm);renderScore();renderBadges();renderLevels();renderPads();setupPads();renderEditor();renderMatrix();checkShared();
