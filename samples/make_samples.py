@@ -22,7 +22,10 @@ def biquad(x,kind,f,Q=.707,gain_db=0):   # standard EQ filters (RBJ cookbook)
         yi=b[0]*xi+b[1]*x1+b[2]*x2-a[1]*y1-a[2]*y2;x2,x1,y2,y1=x1,xi,y1,yi;y[i]=yi
     return y.astype(np.float32)
 def snare_eq(x):   # drum & bass snare EQ: lose the low mud, bring out the crack and the air
-    x=biquad(x,'hp',140,.7);x=biquad(x,'peak',220,1.2,-2);x=biquad(x,'peak',4500,.8,7);return biquad(x,'hshelf',8000,.7,5)
+    x=biquad(x,'hp',140,.7);x=biquad(x,'peak',220,1.2,-2);x=biquad(x,'peak',3600,.8,9);return biquad(x,'hshelf',7000,.7,5)
+def tighten(x,up=4,hold=.04,tau=.1,length=.32):   # drum & bass snare: pitched up and short, like a sampled, tuned-up break snare
+    n=int(len(x)/2**(up/12));x=np.interp(np.arange(n)*2**(up/12),np.arange(len(x)),x).astype(np.float32)
+    t=np.arange(len(x))/SR;env=np.where(t<hold,1,np.exp(-(t-hold)/tau));x=(x*env)[:int(length*SR)];return x
 def onset(x,th=.02):   # start each sample right at the hit
     i=np.argmax(np.abs(x)>th*np.abs(x).max());return x[max(0,i-int(.001*SR)):]
 def fade(x,sec):
@@ -33,7 +36,7 @@ def save(name,x):
     w.writeframes((x*32767).astype('<i2').tobytes());w.close();print(name,'%.2fs'%(len(x)/SR),os.path.getsize(OUT+name+'.wav')//1024,'KB')
 def kick(v,rr):return mix([(f'k20/in/rr{rr}/kick_dirty_vl{v}_rr{rr}.flac',1),(f'k20/oh/rr{rr}/kick_dirty_vl{v}_rr{rr}.flac',.45)],.5)
 def snare(v,rr):return mix([(f's13/top/rr{rr}/s13_center_vl{v}_rr{rr}.flac',1),(f's13/btm/rr{rr}/s13_center_vl{v}_rr{rr}.flac',.45),
-                             (f's13/ohl/rr{rr}/s13_center_vl{v}_rr{rr}.flac',.4),(f's13/ohr/rr{rr}/s13_center_vl{v}_rr{rr}.flac',.4)],.6)
+                             (f's13/ohl/rr{rr}/s13_center_vl{v}_rr{rr}.flac',.22),(f's13/ohr/rr{rr}/s13_center_vl{v}_rr{rr}.flac',.22)],.6)   # less room mic: a tighter snare
 def hat(name,length):return mix([(f'h14/cl/rr1/{name}_rr1.flac',1),(f'h14/ohl/rr1/{name}_rr1.flac',.3),(f'h14/ohr/rr1/{name}_rr1.flac',.3)],length)
 def ride(v):return mix([(f'r20/cl/rr1/ride_bow_vl{v}_rr1.flac',1),(f'r20/oh/rr1/ride_bow_vl{v}_rr1.flac',.5)],2.5)
 # keep the loudness differences between soft and hard hits: normalise each family by its loudest member
@@ -43,7 +46,7 @@ def family(items,db=-1):
 kicks=family([('kick1',fade(onset(kick(8,1)),.08)[:int(.42*SR)]),('kick2',fade(onset(kick(8,2)),.08)[:int(.42*SR)]),('kick_soft',fade(onset(kick(5,1)),.08)[:int(.42*SR)])])
 kicks=[(n,fade(x,.06)) for n,x in kicks]
 snares=family([('snare1',onset(snare_eq(snare(9,1)))),('snare2',onset(snare_eq(snare(9,2)))),('snare_mid',onset(snare_eq(snare(6,1)))),('snare_ghost',onset(snare_eq(snare(3,1))))])
-snares=[(n,fade(x[:int(.45*SR)],.12)) for n,x in snares]
+snares=[(n,fade(tighten(x),.05)) for n,x in snares]
 hats=family([('hat',onset(hat('hh_closed_tip_vl5',.3))),('hat_soft',onset(hat('hh_closed_tip_vl3',.3))),('open',onset(hat('hh_open_tip_vl4',.9)))],-3)
 hats=[(n,fade(x[:int((.7 if n=='open' else .2)*SR)],.1 if n=='open' else .05)) for n,x in hats]
 for n,x in kicks+snares+hats:save(n,x)

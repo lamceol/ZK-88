@@ -504,7 +504,7 @@ const SYN={
     duck(t)},
   snare(t,v){   // hard on the backbeat, medium, and quiet ghost notes, like a drummer
     const ghost=v<.6;
-    if(SMP.snare1){const g=sbuf(v>=.9?take([SMP.snare1,SMP.snare2]):v>=.6?SMP.snare_mid:SMP.snare_ghost,t,1.35,drumBus);send(g,ghost?.05:.13);return}
+    if(SMP.snare1){const g=sbuf(v>=.9?take([SMP.snare1,SMP.snare2]):v>=.6?SMP.snare_mid:SMP.snare_ghost,t,1.75,drumBus);send(g,ghost?.03:.07);return}   // just a little room: drum & bass snares stay short
     const s=ctx.createBufferSource(),lp=F('lowpass',ghost?3800:16000,.7),g=ctx.createGain();s.buffer=take(KIT.snare);
     g.gain.value=v*1.05;s.connect(lp);lp.connect(g);g.connect(drumBus);send(g,ghost?.06:.17);s.start(t)},
   hat(t,v){fade(openHat,t);if(SMP.hat){sbuf(v>.6?SMP.hat:SMP.hat_soft,t,.2,drumBus,.25);return}metal(t,v*.4,.04,.25)},

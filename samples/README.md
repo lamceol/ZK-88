@@ -10,8 +10,8 @@ The kick, snare, hi-hat and break samples are made from **Unruly Drums** by
 https://github.com/sfzinstruments/karoryfer.unruly-drums
 
 How they were made (`make_samples.py`): the close and room microphones of each hit were mixed
-to mono, trimmed and faded; the snares were EQ'd for drum & bass (low mud cut, crack and air
-boosted). `break.wav` is an Amen-style break pattern played on the same kit at 170 BPM, then
+to mono, trimmed and faded; the snares were made drum & bass style: low mud cut, crack and air
+boosted, pitched up 4 semitones and shortened (about 80 ms loud, gone by about 160 ms). `break.wav` is an Amen-style break pattern played on the same kit at 170 BPM, then
 compressed and lightly saturated like a sampled break. It is **not** the original "Amen,
 Brother" recording; only the well-known rhythm is borrowed.
 
