@@ -431,11 +431,12 @@ function pan(node,p,dest){if(!ctx.createStereoPanner){node.connect(dest);return}
 function send(node,rev,echo){if(rev){const g=ctx.createGain();g.gain.value=rev;node.connect(g);g.connect(revIn)}if(echo){const g=ctx.createGain();g.gain.value=echo;node.connect(g);g.connect(echoIn)}}
 function fade(v,t){if(!v||v.end<=t)return;const p=v.g.gain;if(p.cancelAndHoldAtTime)p.cancelAndHoldAtTime(t);else p.cancelScheduledValues(t);p.setTargetAtTime(.0001,t,.008)}
 function duck(t){const p=bassBus.gain;p.setValueAtTime(1,t);p.linearRampToValueAtTime(.3,t+.008);p.linearRampToValueAtTime(1,t+.15)}
-function metal(t,v,dec,p){const s=ctx.createBufferSource();s.buffer=metalBuf;s.start(t,Math.random()*.5);s.stop(t+dec+.1);
-  const hp=F('highpass',7000),bp=F('bandpass',10500,.7),g=ctx.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+dec);
-  s.connect(hp);hp.connect(bp);bp.connect(g);
-  const n=N(t,dec+.05),nh=F('highpass',9000),ng=ctx.createGain();ng.gain.value=.35;n.connect(nh);nh.connect(ng);ng.connect(g);   // a breath of air on top
-  pan(g,p,drumBus);send(g,.06);return g}
+function metal(t,v,dec,p){   // crisp hats: bright noise, with a little metallic ring underneath
+  const g=ctx.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+dec);
+  const n=N(t,dec+.05),nh=F('highpass',7000),nb=F('peaking',10500,.9);nb.gain.value=5;n.connect(nh);nh.connect(nb);nb.connect(g);
+  const s=ctx.createBufferSource();s.buffer=metalBuf;s.start(t,Math.random()*.5);s.stop(t+dec+.1);
+  const mh=F('highpass',8000),mg=ctx.createGain();mg.gain.value=.3;s.connect(mh);mh.connect(mg);mg.connect(g);
+  pan(g,p,drumBus);send(g,.05);return g}
 const BASS_HZ=[0,82.41,98,110];   // E, G, A
 const SYN={
   kick(t,v){   // punchy: fast pitch drop into a short, tight boom, with a beater click on top
@@ -445,15 +446,17 @@ const SYN={
     const c=O('triangle',1800,t,t+.03);c.frequency.exponentialRampToValueAtTime(400,t+.012);c.connect(env(t,v*.3,.014,drumBus));
     const n=N(t,.02),hp=F('highpass',3500);n.connect(hp);hp.connect(env(t,v*.22,.01,drumBus));
     duck(t)},
-  snare(t,v){   // the big drum & bass crack: two tuned tones, bright noise and room
-    const bodyBus=ctx.createGain(),sh=shaper(1.8),o2=ctx.createGain();o2.gain.value=.85;bodyBus.connect(sh);sh.connect(o2);o2.connect(drumBus);send(o2,.24);
-    const a=O('triangle',200,t,t+.2);a.frequency.exponentialRampToValueAtTime(178,t+.04);a.connect(env(t,v*.75,.11,bodyBus));
-    const b=O('sine',340,t,t+.12);b.frequency.exponentialRampToValueAtTime(300,t+.03);b.connect(env(t,v*.35,.06,bodyBus));
-    const n=N(t,.35),hp=F('highpass',1000),pk=F('peaking',3800,.9);pk.gain.value=5;n.connect(hp);hp.connect(pk);
-    const ng=ctx.createGain();ng.gain.setValueAtTime(v*.85,t);ng.gain.exponentialRampToValueAtTime(v*.25,t+.05);ng.gain.exponentialRampToValueAtTime(.001,t+.24);pk.connect(ng);ng.connect(bodyBus);
-    const n2=N(t,.06),bp=F('bandpass',7000,.8);n2.connect(bp);bp.connect(env(t,v*.45,.04,bodyBus))},
-  hat(t,v){fade(openHat,t);metal(t,v*1.4,.045,.25)},
-  open(t,v){fade(openHat,t);openHat={g:metal(t,v*.6,.38,.25),end:t+.5}},
+  snare(t,v){   // layered drum & bass snare: tuned body, short bright rattle, a tiny clap for the crack, and room
+    const sb=ctx.createGain(),sh=shaper(1.3),o2=ctx.createGain();o2.gain.value=1.1;sb.connect(sh);sh.connect(o2);o2.connect(drumBus);send(o2,.2);
+    const a=O('triangle',215,t,t+.2);a.frequency.exponentialRampToValueAtTime(186,t+.03);a.connect(env(t,v*.75,.1,sb));
+    const b=O('sine',335,t,t+.1);b.frequency.exponentialRampToValueAtTime(292,t+.025);b.connect(env(t,v*.3,.05,sb));
+    const n=N(t,.25),hp=F('highpass',1800),pk=F('peaking',5200,.8),lp=F('lowpass',12000,.7);pk.gain.value=4;n.connect(hp);hp.connect(pk);pk.connect(lp);
+    const ng=ctx.createGain();ng.gain.setValueAtTime(v*.8,t);ng.gain.exponentialRampToValueAtTime(v*.2,t+.035);ng.gain.exponentialRampToValueAtTime(.0005,t+.17);lp.connect(ng);ng.connect(sb);
+    const n3=N(t,.08),bp=F('bandpass',2200,1.2),cg=ctx.createGain();cg.gain.setValueAtTime(.0001,t);
+    [0,.006,.012].forEach(d=>{cg.gain.setValueAtTime(v*.55,t+d);cg.gain.exponentialRampToValueAtTime(v*.08,t+d+.005)});cg.gain.exponentialRampToValueAtTime(.0001,t+.06);
+    n3.connect(bp);bp.connect(cg);cg.connect(sb)},
+  hat(t,v){fade(openHat,t);metal(t,v*.4,.04,.25)},
+  open(t,v){fade(openHat,t);openHat={g:metal(t,v*.16,.32,.25),end:t+.5}},
   clap(t,v){const n=N(t,.4),hp=F('highpass',600),bp=F('bandpass',1400,.9),g=ctx.createGain();g.gain.setValueAtTime(.0001,t);
     [0,.008,.019,.028].forEach(d=>{g.gain.setValueAtTime(v*.85,t+d);g.gain.exponentialRampToValueAtTime(v*.12,t+d+.007)});
     g.gain.setValueAtTime(v*.6,t+.034);g.gain.exponentialRampToValueAtTime(.0001,t+.22);
@@ -486,12 +489,14 @@ const SYN={
     const o=O('triangle',140,t,t+.35);o.frequency.exponentialRampToValueAtTime(520,t+.12);o.frequency.exponentialRampToValueAtTime(470,t+.3);
     const m=O('sine',18,t,t+.35),mg=ctx.createGain();mg.gain.value=25;m.connect(mg);mg.connect(o.frequency);
     const lp=F('lowpass',2200),g=env(t,v*.8,.3,fxBus);o.connect(lp);lp.connect(g);send(g,.2,.2)},
-  horn(t,v){   // ragga air horn: buzzy saws with a wobble, shaped by two vowel-like filters
-    const end=t+.5,sum=ctx.createGain(),lfo=O('sine',7,t,end),lg=ctx.createGain();lg.gain.value=18;lfo.connect(lg);
-    [[466.16,-8],[466.16,9],[469,0],[233.08,4]].forEach(([f,c])=>{const o=O('sawtooth',f,t,end+.02);o.detune.setValueAtTime(c,t);o.detune.linearRampToValueAtTime(c-60,end);lg.connect(o.detune);o.connect(sum)});
-    const f1=F('bandpass',900,2),f2=F('bandpass',2400,2.5),mix=ctx.createGain();sum.connect(f1);sum.connect(f2);f1.connect(mix);f2.connect(mix);
-    const sh=shaper(3),g=ctx.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v*.3,t+.02);g.gain.setValueAtTime(v*.3,t+.38);g.gain.exponentialRampToValueAtTime(.0001,end);
-    mix.connect(sh);sh.connect(g);g.connect(fxBus);send(g,.3,.3)},
+  horn(t,v){   // sound-system air horn tuned to E: "bap, bap, baaap" in time with the beat, brassy rather than buzzy
+    const sd=stepDur(),hb=ctx.createGain(),hp=F('highpass',220),pk=F('peaking',1100,1),lp=F('lowpass',2400,.6),lp2=F('lowpass',5000,.7),og=ctx.createGain();
+    pk.gain.value=3;og.gain.value=v*.15;hb.connect(hp);hp.connect(pk);pk.connect(lp);lp.connect(lp2);lp2.connect(og);pan(og,.15,fxBus);send(og,.22,.18);
+    [[0,.5*sd],[sd,.5*sd],[2*sd,3.2*sd]].forEach(([d,len],i)=>{const tt=t+d,end=tt+len,g=ctx.createGain();
+      g.gain.setValueAtTime(.0001,tt);g.gain.exponentialRampToValueAtTime(1,tt+.015);g.gain.setValueAtTime(1,end-.02);g.gain.exponentialRampToValueAtTime(.0001,end+.06);g.connect(hb);
+      [[329.63,-5],[329.63,6],[493.88,0],[659.25,3]].forEach(([f,c])=>{const o=O('sawtooth',f,tt,end+.1);o.detune.setValueAtTime(c,tt);
+        if(i===2){o.detune.setValueAtTime(c,end-.12);o.detune.linearRampToValueAtTime(c-100,end+.06)}   // the last blast sags at the end
+        const og2=ctx.createGain();og2.gain.value=f>600?.5:1;o.connect(og2);og2.connect(g)})})},
   boom(t,v){   // cinematic impact: falling sub, noise blast and a big room
     const o=O('sine',110,t,t+1.2);o.frequency.exponentialRampToValueAtTime(32,t+.9);const sh=shaper(2),og=env(t,v*.85,1.1,fxBus);o.connect(sh);sh.connect(og);
     const n=N(t,1.3),lp=F('lowpass',4000,.7);lp.frequency.setValueAtTime(4000,t);lp.frequency.exponentialRampToValueAtTime(80,t+1);

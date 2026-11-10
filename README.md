@@ -24,8 +24,10 @@ Play it: https://lamceol.github.io/ZK-88/
 - Works offline once loaded; on iPhone or iPad use Share → Add to Home Screen
 
 Every sound is made live with the Web Audio API, so there are no sample files. The kit is built
-and mixed like a drum & bass track: a punchy kick, a cracking snare with room reverb, ghost-note
-snares, metallic hi-hats with a slight lean, a wide detuned "reese" bass over a clean sub that
+and mixed like a drum & bass track: a punchy kick, a layered snare (tuned body, short bright rattle, a tiny clap
+and room reverb), crisp noise hi-hats, ghost-note
+snares, hi-hats with a slight lean, a sound-system air horn tuned to E that plays "bap, bap, baaap"
+in time with the beat, a wide detuned "reese" bass over a clean sub that
 dips under each kick, and compression on the drums.
 
 Fonts: Press Start 2P and Baloo 2, both under the SIL Open Font License.
