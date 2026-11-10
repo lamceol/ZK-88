@@ -177,6 +177,11 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .foot{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
 .foot b{color:var(--ink)}
 
+.dash{display:grid;gap:8px}
+.dash-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px}
+.chip.mode[aria-pressed="true"]{background:var(--pink);border-color:var(--pink);color:var(--dark-ink)}
+#run{display:block;width:100%;height:170px;border-radius:14px;border:2px solid var(--line);background:var(--void);touch-action:manipulation;cursor:pointer;-webkit-user-select:none;user-select:none}
+@media (max-width:480px){#run{height:140px}}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);background:var(--gold);color:var(--dark-ink);border:3px solid #000;border-radius:14px;padding:10px 16px;font-weight:800;font-size:17px;box-shadow:0 6px 0 #000;text-align:center}
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
 
@@ -226,7 +231,8 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
     <ol>
       <li><b>1</b>Press PLAY</li>
       <li><b>2</b>Tap squares to add sounds</li>
-      <li><b>3</b>Hold DROP, then let go!</li>
+      <li><b>3</b>Tap the runner to jump</li>
+      <li><b>4</b>Hold DROP, then let go!</li>
     </ol>
     <button class="btn sm" id="howtoOk">Got it</button>
   </section>
@@ -244,6 +250,13 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
       <button class="nudge" id="tUp" aria-label="Faster">+</button>
       <div class="chips" id="chips"></div>
     </div>
+  </section>
+
+  <section class="dash" aria-label="Beat Runner game">
+    <div class="dash-head"><span class="lbl">Beat Runner · jump the spikes</span>
+      <div class="chips" role="group" aria-label="Runner mode"><button class="chip mode" id="modeAuto" aria-pressed="true">Auto run</button><button class="chip mode" id="modeYou" aria-pressed="false">You jump</button></div></div>
+    <canvas id="run" role="img" aria-label="A cube running along your beat. Each kick is a spike to jump."></canvas>
+    <p class="msg" id="runHint">Your kicks are the spikes. Tap the runner to take control.</p>
   </section>
 
   <section class="grid-wrap" aria-label="Levels">
@@ -336,7 +349,9 @@ const BADGES=[
  {id:'explorer',icon:'🗺️',name:'Explorer',      how:'Visit all 4 levels'},
  {id:'bassboss',icon:'🔊',name:'Bass Boss',     how:'Use low, middle and high bass in one beat'},
  {id:'combo',   icon:'🔥',name:'Combo x25',     how:'Tap 25 sounds in a row, fast'},
- {id:'share',   icon:'📤',name:'Show Off',      how:'Share a beat'}
+ {id:'share',   icon:'📤',name:'Show Off',      how:'Share a beat'},
+ {id:'spikes',  icon:'🔺',name:'Spike Jumper',  how:'Jump 16 spikes in a row in Beat Runner'},
+ {id:'coins',   icon:'🪙',name:'Coin Grabber',  how:'Grab 10 coins in Beat Runner'}
 ];
 const RANKS=[[0,'Rookie'],[100,'Beat Cadet'],[300,'Groove Ranger'],[600,'Bass Knight'],[1000,'Jungle Pilot'],[1600,'DnB Legend'],[2500,'Beat Boss']];
 
@@ -511,6 +526,7 @@ function scheduleStep(s,t){
   stepSounds(pat,s,t,el>2.2);   // late in a build-up the kick and bass drop out
   if(el>=0){const every=el<1.3?4:el<2.6?2:1;if(s%every===0)play('snare',t,Math.min(.9,.3+el*.15))}   // snare roll that speeds up
   queue.push({s,t});heard.push({s,t});if(heard.length>32)heard.shift();
+  timeline.push({k:K,s,t});tlMap.set(K,s);K++;if(timeline.length>48)tlMap.delete(timeline.shift().k);
 }
 function scheduler(){
   if(nextTime<ctx.currentTime-.05)nextTime=ctx.currentTime+.05;
@@ -521,7 +537,7 @@ function scheduler(){
   }
 }
 function start(){
-  ensureAudio();if(playing)return;playing=true;step=0;queue=[];heard=[];nextTime=ctx.currentTime+.06;
+  ensureAudio();if(playing)return;playing=true;step=0;queue=[];heard=[];timeline=[];tlMap.clear();RUN.jt=-1;RUN.lastK=null;RUN.ghostUntil=-1;RUN.safeK=K+4;nextTime=ctx.currentTime+.06;
   scheduler();timer=setInterval(scheduler,25);
   try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(w=>wake=w).catch(()=>{})}catch(e){}
   $('play').setAttribute('aria-pressed','true');$('playTxt').textContent='■ STOP';
@@ -562,6 +578,96 @@ function doDrop(t){
     award('drop');setTimeout(()=>{$('dropTxt').textContent='HOLD FOR DROP 💣'},1200)},wait);
 }
 
+/* ---------- Beat Runner: a cube runs along the beat; every kick is a spike, every coin sound is a coin ---------- */
+const AIR=4;   // a jump lasts one beat (4 steps)
+const RUN={safeK:4,mode:'auto',jt:-1,buffer:-1,ghostUntil:-1,crashK:-1,lastK:null,streak:0,tries:1,got:new Set(),parts:[],flash:0};
+let timeline=[],tlMap=new Map(),K=0;
+const rc=$('run'),rx=rc.getContext('2d');let rW=0,rH=0,rDpr=1;
+function sizeRun(){rDpr=Math.min(2,window.devicePixelRatio||1);rW=rc.clientWidth;rH=rc.clientHeight;rc.width=Math.round(rW*rDpr);rc.height=Math.round(rH*rDpr)}
+addEventListener('resize',sizeRun);sizeRun();
+window.ZK88.runner={RUN,runPos:()=>runPos(),stepOf:k=>stepOf(k),spikes:()=>spikes(state.patterns[state.level])};
+// kicks become spikes, but only one per beat (4 steps) so every run can be cleared; the other kicks glow on the floor
+let spkKey='',spkArr=null;
+function spikes(pat){const r=pat.kick,key=r.join('');if(key===spkKey)return spkArr;const o=Array(16).fill(0),f=r.indexOf(1);
+  if(f>=0){let last=-99;for(let j=0;j<16;j++){const s=(f+j)%16;if(r[s]&&(j===0||(j-last>=4&&j<=12))){o[s]=1;last=j}}}
+  spkKey=key;spkArr=o;return o}
+function stepOf(k){if(tlMap.has(k))return tlMap.get(k);const L=timeline[timeline.length-1];return L?(((L.s+k-L.k)%16)+16)%16:((k%16)+16)%16}
+function runPos(){
+  if(!ctx||!playing||!timeline.length)return null;
+  const T=ctx.currentTime-(ctx.outputLatency||0),sd=stepDur();let e=timeline[0];for(const x of timeline)if(x.t<=T)e=x;
+  return{p:e.k+(T-e.t)/sd,T,sd}}
+function setMode(m){RUN.mode=m;$('modeAuto').setAttribute('aria-pressed',m==='auto');$('modeYou').setAttribute('aria-pressed',m==='you');
+  $('runHint').textContent=m==='you'?'Tap the runner (or press Space) to jump. Jump the spikes and grab the coins!':'Your kicks are the spikes. Tap the runner to take control.';
+  RUN.streak=0;RUN.tries=1;RUN.ghostUntil=-1;RUN.lastK=null}
+function runJump(){
+  if(RUN.mode!=='you')setMode('you');
+  ensureAudio();if(!playing){start();return}
+  const pp=runPos();if(!pp)return;const u=RUN.jt>=0?(pp.T-RUN.jt)/(AIR*pp.sd):9;
+  if(u>=1)RUN.jt=pp.T;else RUN.buffer=pp.T}   // pressed a little early: jump as soon as you land
+function crashSound(){if(!ctx)return;const t=ctx.currentTime,n=N(t,.3),lp=F('lowpass',1800,1),g=env(t,.35,.25,fxBus);n.connect(lp);lp.connect(g)}
+function burst(x,y,cols,n){for(let i=0;i<n;i++)RUN.parts.push({x,y,vx:(Math.random()-.5)*7,vy:-Math.random()*6-1,s:3+Math.random()*4,c:cols[i%cols.length],life:40})}
+function drawRun(){
+  const W=rW,Hh=rH;if(!W||!Hh)return;
+  const c=rx;c.setTransform(rDpr,0,0,rDpr,0,0);
+  const pat=state.patterns[state.level],pp=runPos(),p=pp?pp.p:-1.5,safe=pp?RUN.safeK:4,sp0=spikes(pat);   // no spikes in the first beat
+  const isSpk=k=>k>=safe&&!!sp0[stepOf(k)];
+  const G=Math.round(Hh*.8),C=Math.max(14,Math.round(Hh*.18)),JH=C*2.4,S=Math.max(C*1.7,W/11),x0=Math.round(W*.2);
+  // jump height now (0..1)
+  let y=0;
+  if(pp){let u=RUN.jt>=0?(pp.T-RUN.jt)/(AIR*pp.sd):9;
+    if(u>=1&&RUN.buffer>0&&pp.T-RUN.buffer<.15){RUN.jt=pp.T;RUN.buffer=-1;u=0}
+    if(RUN.mode==='auto'&&u>=1){for(let k=Math.ceil(p);k<=p+AIR/2;k++)if(isSpk(k)&&k-p>.05){RUN.jt=pp.T;u=0;break}}
+    y=u<1?4*u*(1-u):0}
+  const yb=y*JH;   // how high the cube's bottom is above the ground, in pixels
+  // background: dark sky, pulse on the kick, grid sliding at half speed
+  const kickNow=pp&&pat.kick[stepOf(Math.floor(p))]&&p-Math.floor(p)<.35;
+  c.fillStyle='#0c0820';c.fillRect(0,0,W,Hh);
+  if(kickNow){c.fillStyle='rgba(255,63,164,.12)';c.fillRect(0,0,W,G)}
+  c.strokeStyle='rgba(124,104,230,.18)';c.lineWidth=1;const gs=S*.5;
+  for(let x=x0-((p*S*.5)%gs+gs)%gs;x<W;x+=gs){c.beginPath();c.moveTo(x+.5,0);c.lineTo(x+.5,G);c.stroke()}
+  for(let yy=G-gs;yy>0;yy-=gs){c.beginPath();c.moveTo(0,yy+.5);c.lineTo(W,yy+.5);c.stroke()}
+  // floor with bar lines every 4 steps
+  c.fillStyle='#1a1240';c.fillRect(0,G,W,Hh-G);
+  for(let k=Math.floor(p-x0/S)-1;k<p+W/S+1;k++){if(((stepOf(k)%4)+4)%4)continue;const x=x0+(k-p)*S;c.fillStyle=stepOf(k)===0?'rgba(39,225,255,.5)':'rgba(39,225,255,.18)';c.fillRect(Math.round(x),G,2,Hh-G)}
+  c.fillStyle='rgba(39,225,255,.35)';c.fillRect(0,G-2,W,6);c.fillStyle='#27e1ff';c.fillRect(0,G,W,2);
+  // spikes and coins
+  const sw=C*.9,sh=C*.9,ghost=pp&&pp.T<RUN.ghostUntil;
+  for(let k=Math.floor(p-x0/S)-1;k<p+(W-x0)/S+1;k++){const s=stepOf(k),x=x0+(k-p)*S;
+    if(pat.kick[s]&&!isSpk(k)){c.fillStyle='#ff3fa4';c.fillRect(x-C*.15,G-3,C*.3,4)}
+    if(isSpk(k)){c.beginPath();c.moveTo(x-sw/2,G);c.lineTo(x,G-sh);c.lineTo(x+sw/2,G);c.closePath();
+      c.fillStyle='#ff3fa4';c.fill();c.lineWidth=2;c.strokeStyle='#ffd0ea';c.stroke();
+      c.beginPath();c.moveTo(x-sw/4,G);c.lineTo(x,G-sh/2);c.lineTo(x+sw/4,G);c.closePath();c.fillStyle='#0c0820';c.fill()}
+    if(pat.coin[s]&&!RUN.got.has(k)){const cy=G-JH*.8-C/2,r=C*.32;c.beginPath();c.arc(x,cy,r,0,7);c.fillStyle='#ffd23f';c.fill();c.lineWidth=2;c.strokeStyle='#fff6c8';c.stroke();
+      c.fillStyle='#b8860b';c.fillRect(x-r*.18,cy-r*.55,r*.36,r*1.1)}}
+  // the rules, only when you are jumping
+  if(pp&&RUN.mode==='you'){
+    if(RUN.lastK===null)RUN.lastK=Math.floor(p);
+    for(let k=Math.round(p)-1;k<=Math.round(p)+1;k++){const s=stepOf(k),dx=(k-p)*S;
+      if(!ghost&&isSpk(k)&&k!==RUN.crashK&&Math.abs(dx)<(C/2+sw/2)*.45&&yb<sh*.5){   // crash
+        RUN.crashK=k;RUN.streak=0;RUN.tries++;RUN.ghostUntil=pp.T+4*pp.sd;crashSound();burst(x0,G-C/2,['#ff3fa4','#27e1ff','#ffffff'],26)}
+      if(pat.coin[s]&&!RUN.got.has(k)&&Math.abs(dx)<C*.8&&yb>JH*.5){RUN.got.add(k);burst(x0+dx,G-JH*.8-C/2,['#ffd23f','#fff6c8'],14);
+        state.runCoins=(state.runCoins||0)+1;addXP(3);if(state.runCoins>=10)award('coins')}}
+    while(RUN.lastK<p-.6){const k=RUN.lastK;RUN.lastK++;   // a spike you got past
+      if(isSpk(k)&&k!==RUN.crashK&&!(ghost&&k>RUN.crashK)){RUN.streak++;addXP(1);
+        if(RUN.streak>(state.runBest||0))state.runBest=RUN.streak;if(RUN.streak>=16)award('spikes')}}
+    if(RUN.got.size>64)RUN.got=new Set([...RUN.got].slice(-32))}
+  // the cube
+  const blink=ghost&&Math.floor(pp.T*10)%2;
+  if(!blink){c.save();c.translate(x0,G-C/2-yb);if(y>0){const u=(pp.T-RUN.jt)/(AIR*pp.sd);c.rotate(Math.min(1,u)*Math.PI)}
+    c.fillStyle='#ff3fa4';c.fillRect(-C/2,-C/2,C,C);c.lineWidth=2;c.strokeStyle='#14081f';c.strokeRect(-C/2+1,-C/2+1,C-2,C-2);
+    c.fillStyle='#27e1ff';c.fillRect(-C*.3,-C*.3,C*.6,C*.6);
+    c.fillStyle='#14081f';c.fillRect(-C*.2,-C*.15,C*.12,C*.16);c.fillRect(C*.08,-C*.15,C*.12,C*.16);c.fillRect(-C*.16,C*.1,C*.32,C*.07);
+    c.restore()}
+  // sparks
+  RUN.parts=RUN.parts.filter(q=>--q.life>0);RUN.parts.forEach(q=>{q.vy+=.3;q.x+=q.vx;q.y+=q.vy;c.fillStyle=q.c;c.fillRect(q.x|0,q.y|0,q.s,q.s)});
+  // score
+  c.font=`${Math.max(8,Math.round(Hh*.07))}px "Press Start 2P", monospace`;c.textBaseline='top';c.fillStyle='#f4f0ff';
+  if(RUN.mode==='you'){c.textAlign='left';c.fillText(`STREAK ${RUN.streak}  BEST ${state.runBest||0}`,10,10);c.textAlign='right';c.fillText(`TRIES ${RUN.tries}`,W-10,10)}
+  else{c.textAlign='left';c.fillStyle='#a79ddb';c.fillText('AUTO RUN',10,10)}
+  if(!pp){c.textAlign='center';c.textBaseline='middle';c.fillStyle='#b6ff3b';c.font=`${Math.max(10,Math.round(Hh*.1))}px "Press Start 2P", monospace`;
+    c.fillText(RUN.mode==='you'?'TAP TO START':'PRESS PLAY',W/2,G*.45)}
+}
+
 /* ---------- drawing the playhead ---------- */
 let stepEls=[],cellEls={},padEls={};
 function draw(){
@@ -569,6 +675,7 @@ function draw(){
   if(build){const el=ctx.currentTime-build.t0;$('dropFill').style.width=Math.min(100,el/4*100)+'%';
     $('dropTxt').textContent=el<.8?'KEEP HOLDING…':el<4?'BUILDING… LET GO!':'LET GO NOW!';
     if(el>2.2&&!reduced())$('unit').classList.add('shake')}
+  drawRun();
   requestAnimationFrame(draw);
 }
 const reduced=()=>window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -721,7 +828,11 @@ dropB.addEventListener('pointerdown',e=>{e.preventDefault();try{dropB.setPointer
 dropB.addEventListener('keydown',e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();startBuild()}});
 dropB.addEventListener('keyup',e=>{if(e.key===' '||e.key==='Enter')endBuild(false)});
 dropB.addEventListener('contextmenu',e=>e.preventDefault());
-document.addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('button,input'))return;if(e.code==='Space'){e.preventDefault();playing?stop():start()}});
+document.addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('button,input'))return;
+  if(RUN.mode==='you'&&(e.code==='Space'||e.code==='ArrowUp')){e.preventDefault();if(!e.repeat)runJump();return}
+  if(e.code==='Space'){e.preventDefault();playing?stop():start()}});
+rc.addEventListener('pointerdown',e=>{e.preventDefault();runJump()});
+$('modeAuto').onclick=()=>setMode('auto');$('modeYou').onclick=()=>{setMode('you');ensureAudio();if(!playing)start()};
 
 setBpm(state.bpm);renderScore();renderBadges();renderLevels();renderPads();setupPads();renderEditor();renderMatrix();checkShared();
 requestAnimationFrame(draw);
