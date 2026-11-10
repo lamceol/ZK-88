@@ -125,6 +125,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--cyan);outline-o
 .step.beat{background:#2a2160}
 .step.on{background:var(--c);color:var(--dark-ink);box-shadow:0 3px 0 #000,0 0 12px color-mix(in srgb,var(--c) 55%,transparent)}
 .step.now{outline:3px solid var(--ink);outline-offset:-3px}
+.step .chop{font-weight:800;font-size:16px;line-height:22px;height:22px}
 .step .bars{display:flex;align-items:flex-end;gap:2px;height:22px}
 .step .bars u{display:block;width:5px;border-radius:2px;background:currentColor;opacity:.25}
 .step .bars u:nth-child(1){height:8px}.step .bars u:nth-child(2){height:15px}.step .bars u:nth-child(3){height:22px}
@@ -321,7 +322,7 @@ const VOICES=[
  {id:'snare',name:'Snare',   icon:'💥',col:'#ffd23f'},
  {id:'hat',  name:'Hi-hat',  icon:'✨',col:'#27e1ff'},
  {id:'open', name:'Open hat',icon:'🌀',col:'#6aa8ff'},
- {id:'clap', name:'Clap',    icon:'👏',col:'#ff8a2b'},
+ {id:'brk',  name:'Break',   icon:'🔁',col:'#ff8a2b'},
  {id:'bass', name:'Bass',    icon:'🔊',col:'#b6ff3b'},
  {id:'coin', name:'Coin',    icon:'🪙',col:'#ffe066'},
  {id:'laser',name:'Laser',   icon:'⚡',col:'#ff4d6d'},
@@ -334,8 +335,8 @@ const IDS=VOICES.map(v=>v.id),VC=Object.fromEntries(VOICES.map(v=>[v.id,v]));
 // x = hit; for the bass, 1 2 3 = low, middle, high note
 const LEVELS=[
  {name:'Two-Step',t:{kick:'x.........x.....',snare:'....x.......x...',hat:'x.x.x.x.x.x.x.x.',open:'..............x.',bass:'1.........1...2.'}},
- {name:'Amen Rush',t:{kick:'x.x.......xx....',snare:'....x..x.x..x..x',hat:'x.x.x.x.x.x.x.x.',bass:'1.1.......1...3.',horn:'x...............'}},
- {name:'Boss Battle',t:{kick:'x.........x..x..',snare:'....x.......x.x.',hat:'x.xxx.x.x.xxx.x.',clap:'....x.......x...',bass:'2..2......2..3..',laser:'.......x.......x',boom:'x...............'}},
+ {name:'Amen Rush',t:{brk:'1111111111111111',bass:'1.1.......1...3.',horn:'x...............'}},
+ {name:'Boss Battle',t:{kick:'x.........x..x..',snare:'....x.......x.x.',hat:'x.xxx.x.x.xxx.x.',bass:'2..2......2..3..',laser:'.......x.......x',boom:'x...............'}},
  {name:'Coin Cave',t:{kick:'x.....x...x.....',snare:'....x.......x...',hat:'x.x.x.x.x.x.x.x.',coin:'..x.......x.....',power:'..............x.',jump:'......x.........',bass:'1...1...3...2...'}}
 ];
 const SPEEDS=[['Chill',140],['Fast',160],['Turbo',174],['Hyper',190]];
@@ -360,7 +361,7 @@ const RANKS=[[0,'Rookie'],[100,'Beat Cadet'],[300,'Groove Ranger'],[600,'Bass Kn
 const parseRow=s=>[...(s||'................')].map(c=>c==='x'?1:(c>='1'&&c<='3')?+c:0);
 const levelPattern=i=>{const o={};IDS.forEach(id=>o[id]=parseRow(LEVELS[i].t[id]));return o};
 const blank=()=>Array(16).fill(0);
-const maxOf=id=>id==='bass'?3:1;
+const maxOf=id=>id==='bass'||id==='brk'?3:1;   // the bass has 3 notes; the break has slice, snare chop and kick chop
 
 /* ---------- saved state ---------- */
 let state={bpm:174,vol:.8,level:0,sel:'kick',patterns:LEVELS.map((_,i)=>levelPattern(i)),xp:0,badges:{},played:{},seen:{0:1},placed:0,howto:true};
@@ -368,6 +369,8 @@ try{const s=JSON.parse(localStorage.getItem('zk88')||'null');
   if(s&&Array.isArray(s.patterns)&&s.patterns.length===4){
     state={...state,...s};
     state.patterns=s.patterns.map(p=>{const o={};IDS.forEach(id=>o[id]=Array.isArray(p&&p[id])&&p[id].length===16?p[id].map(n=>Math.max(0,Math.min(maxOf(id),n|0))):blank());return o});
+    const o=s.patterns[1]||{},same=(id,str)=>JSON.stringify((o[id]||blank()).map(n=>n|0))===JSON.stringify(parseRow(str));
+    if(!('brk' in o)&&same('kick','x.x.......xx....')&&same('snare','....x..x.x..x..x'))state.patterns[1]=levelPattern(1);
   }}catch(e){}
 ['badges','played','seen'].forEach(k=>{if(!state[k]||typeof state[k]!=='object')state[k]={}});
 if(!IDS.includes(state.sel))state.sel='kick';
@@ -430,6 +433,20 @@ function makeKick(sr,seed){
 function makeKit(){const sr=ctx.sampleRate,buf=a=>{const b=ctx.createBuffer(1,a.length,sr);b.getChannelData(0).set(a);return b};
   KIT.kick=[1,2,3,4].map(s=>buf(makeKick(sr,s)));KIT.snare=[11,12,13,14].map(s=>buf(makeSnare(sr,s)))}
 const take=a=>a[Math.floor(Math.random()*a.length)];
+/* recorded drums from Karoryfer Samples' "Unruly Drums" (CC0, see samples/README.md). They download straight away
+   and are ready by the first tap; until then the built-in kick, snare and hats stand in */
+const SMP={},SMP_FILES=['kick1','kick2','kick_soft','snare1','snare2','snare_mid','snare_ghost','hat','hat_soft','open','break'];
+const smpData=SMP_FILES.map(n=>fetch('samples/'+n+'.wav').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null));
+let smpStarted=false;
+function loadSamples(){if(smpStarted)return;smpStarted=true;const c=ctx;
+  SMP_FILES.forEach((n,i)=>smpData[i].then(ab=>ab&&new Promise((res,rej)=>c.decodeAudioData(ab.slice(0),res,rej))).then(b=>{if(b)SMP[n]=b}).catch(()=>{}))}
+const BREAK_STEP=60/170/4;   // the break was played at 170 BPM: one step is this long
+const brkSlice=(n,s)=>n===2?4:n===3?0:s;   // slice 4 is the big snare, slice 0 the kick
+const BREAK_KICKS=[0,2,10,11];
+const kickAt=(pat,s)=>!!(pat.kick[s]||(pat.brk[s]&&BREAK_KICKS.includes(brkSlice(pat.brk[s],s))));
+function sbuf(b,t,gain,dest,p=0,off=0,dur=0){const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=b;g.gain.value=gain;s.connect(g);pan(g,p,dest);
+  if(dur){s.start(t,off,dur+.012);g.gain.setValueAtTime(gain,t+dur);g.gain.linearRampToValueAtTime(0,t+dur+.008)}else s.start(t,off);return g}
+let brkNote=null;
 function buildGraph(dest){
   bus=ctx.createGain();
   lpf=ctx.createBiquadFilter();lpf.type='lowpass';lpf.frequency.value=20000;lpf.Q.value=.8;   // the build-up filter
@@ -458,7 +475,7 @@ function buildGraph(dest){
 function ensureAudio(){
   if(!ctx){
     try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
-    ctx=new (window.AudioContext||window.webkitAudioContext)();buildGraph(ctx.destination);
+    ctx=new (window.AudioContext||window.webkitAudioContext)();buildGraph(ctx.destination);loadSamples();
   }
   if(ctx.state!=='running')ctx.resume();
 }
@@ -480,16 +497,20 @@ function metal(t,v,dec,p){   // crisp hats: bright noise, with a little metallic
   pan(g,p,drumBus);send(g,.05);return g}
 const BASS_HZ=[0,82.41,98,110];   // E, G, A
 const SYN={
-  kick(t,v){const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=take(KIT.kick);g.gain.value=v*1.05;s.connect(g);g.connect(drumBus);s.start(t);duck(t)},
-  snare(t,v){   // quiet ghost notes are softer and darker, like a drummer playing lightly
-    const ghost=v<.6,s=ctx.createBufferSource(),lp=F('lowpass',ghost?3800:16000,.7),g=ctx.createGain();s.buffer=take(KIT.snare);
+  kick(t,v){   // recorded kick (soft hits for the off-beat kicks); built-in one until it has loaded
+    if(SMP.kick1)sbuf(v>=.9?take([SMP.kick1,SMP.kick2]):SMP.kick_soft,t,.95,drumBus);
+    else{const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=take(KIT.kick);g.gain.value=v*1.05;s.connect(g);g.connect(drumBus);s.start(t)}
+    duck(t)},
+  snare(t,v){   // hard on the backbeat, medium, and quiet ghost notes, like a drummer
+    const ghost=v<.6;
+    if(SMP.snare1){const g=sbuf(v>=.9?take([SMP.snare1,SMP.snare2]):v>=.6?SMP.snare_mid:SMP.snare_ghost,t,1.35,drumBus);send(g,ghost?.05:.13);return}
+    const s=ctx.createBufferSource(),lp=F('lowpass',ghost?3800:16000,.7),g=ctx.createGain();s.buffer=take(KIT.snare);
     g.gain.value=v*1.05;s.connect(lp);lp.connect(g);g.connect(drumBus);send(g,ghost?.06:.17);s.start(t)},
-  hat(t,v){fade(openHat,t);metal(t,v*.4,.04,.25)},
-  open(t,v){fade(openHat,t);openHat={g:metal(t,v*.16,.32,.25),end:t+.5}},
-  clap(t,v){const n=N(t,.4),hp=F('highpass',600),bp=F('bandpass',1400,.9),g=ctx.createGain();g.gain.setValueAtTime(.0001,t);
-    [0,.008,.019,.028].forEach(d=>{g.gain.setValueAtTime(v*.85,t+d);g.gain.exponentialRampToValueAtTime(v*.12,t+d+.007)});
-    g.gain.setValueAtTime(v*.6,t+.034);g.gain.exponentialRampToValueAtTime(.0001,t+.22);
-    n.connect(hp);hp.connect(bp);bp.connect(g);pan(g,-.1,drumBus);send(g,.3)},
+  hat(t,v){fade(openHat,t);if(SMP.hat){sbuf(v>.6?SMP.hat:SMP.hat_soft,t,.2,drumBus,.25);return}metal(t,v*.4,.04,.25)},
+  open(t,v){fade(openHat,t);if(SMP.open){openHat={g:sbuf(SMP.open,t,.65*v/.7,drumBus,.25),end:t+.7};return}openHat={g:metal(t,v*.16,.32,.25),end:t+.5}},
+  brk(t,v,slice=0,dur=BREAK_STEP){   // one slice of the break, cut off when the next break slice starts
+    if(!SMP.break)return;fade(brkNote,t);const g=sbuf(SMP.break,t,.72*v/.95,drumBus,0,slice*BREAK_STEP,dur);send(g,.04);brkNote={g,end:t+dur};
+    if(BREAK_KICKS.includes(slice))duck(t)},
   bass(t,v,note=1,dur=.45){   // "reese" bass: three detuned saws spread wide, filtered and driven, over a clean sub
     const f=BASS_HZ[note]||BASS_HZ[1],end=t+dur+.07;fade(bassNote,t);
     const g=ctx.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v*.4,t+.01);g.gain.setValueAtTime(v*.4,t+dur);g.gain.exponentialRampToValueAtTime(.0001,end);g.connect(bassBus);
@@ -542,15 +563,16 @@ async function render(bars=2,pat=state.patterns[state.level]){
   ctx=oc;buildGraph(oc.destination);for(let i=0;i<bars*16;i++)stepSounds(pat,i%16,.01+i*stepDur());
   ({ctx,bus,lpf,comp,out,drumBus,bassBus,fxBus,revIn,echoIn,echoDelay,noiseBuf,metalBuf,openHat,bassNote}=keep);Object.assign(KIT,keepKit);
   return oc.startRendering()}
-window.ZK88={render,kit:()=>KIT};
+window.ZK88={render,kit:()=>KIT,loaded:()=>Object.keys(SMP).length};
 
 /* ---------- sequencer ---------- */
 let playing=false,timer,step=0,nextTime=0,queue=[],heard=[],rec=false,recSnapped=false,nowStep=-1,pendingLevel=null,dropNext=false,build=null,wake=null;
 // how hard each hit plays: loud backbeat snares, quiet "ghost" snares in between, hats that lean back a little
 function stepSounds(pat,s,t,skipLow){const sd=stepDur();
   IDS.forEach(id=>{const n=pat[id][s];if(!n)return;
-    if(skipLow&&(id==='kick'||id==='bass'))return;
+    if(skipLow&&(id==='kick'||id==='bass'||id==='brk'))return;
     if(id==='bass'){let g=1;while(g<16&&!pat.bass[(s+g)%16])g++;play('bass',t,.9,n,Math.min(g,8)*sd);return}
+    if(id==='brk'){let g=1;while(g<16&&!pat.brk[(s+g)%16])g++;play('brk',t,.95,brkSlice(n,s),g*Math.min(sd,BREAK_STEP));return}
     let v=.85,tt=t;
     if(id==='snare')v=(s===4||s===12)?.95:.38;
     else if(id==='kick')v=s%4===0?.95:.8;
@@ -624,7 +646,7 @@ addEventListener('resize',sizeRun);sizeRun();
 window.ZK88.runner={RUN,runPos:()=>runPos(),stepOf:k=>stepOf(k),spikes:()=>spikes(state.patterns[state.level])};
 // kicks become spikes, but only one per beat (4 steps) so every run can be cleared; the other kicks glow on the floor
 let spkKey='',spkArr=null;
-function spikes(pat){const r=pat.kick,key=r.join('');if(key===spkKey)return spkArr;const o=Array(16).fill(0),f=r.indexOf(1);
+function spikes(pat){const r=pat.kick.map((_,s)=>kickAt(pat,s)?1:0),key=r.join('');if(key===spkKey)return spkArr;const o=Array(16).fill(0),f=r.indexOf(1);
   if(f>=0){let last=-99;for(let j=0;j<16;j++){const s=(f+j)%16;if(r[s]&&(j===0||(j-last>=4&&j<=12))){o[s]=1;last=j}}}
   spkKey=key;spkArr=o;return o}
 function stepOf(k){if(tlMap.has(k))return tlMap.get(k);const L=timeline[timeline.length-1];return L?(((L.s+k-L.k)%16)+16)%16:((k%16)+16)%16}
@@ -647,14 +669,15 @@ function burst(x,y,cols,n){for(let i=0;i<n;i++)RUN.parts.push({x,y,vx:(Math.rand
 const hexA=(hex,a)=>{const n=parseInt(hex.slice(1),16);return`rgba(${n>>16},${n>>8&255},${n&255},${Math.max(0,Math.min(1,a)).toFixed(3)})`};
 const glowAt=(k,p)=>p>=k&&p<k+.7?1-(p-k)/.7:0;   // 1 as it reaches the cube, fading over most of a step
 function star(c,x,y,r,rot){c.beginPath();for(let i=0;i<10;i++){const a=rot+i*Math.PI/5-Math.PI/2,rr=i%2?r*.45:r;c.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr)}c.closePath()}
-// behind everything: the wall (snares, claps), the sky (hats, lasers, power ups, horns, booms)
+// behind everything: the wall (snares, break slices), the sky (hats, lasers, power ups, horns, booms)
 function decoBack(c,pat,p,W,Hh,G,C,S,x0){
   const k0=Math.floor(p-x0/S)-2,k1=p+(W-x0)/S+2,col=id=>VC[id].col;let wallFlash=0,boomFlash=0;
   for(let k=k0;k<k1;k++){const s=stepOf(k),x=x0+(k-p)*S,g=glowAt(k,p);
     if(pat.snare[s]){const big=s===4||s===12,top=big?Hh*.12:Hh*.45,w=S*(big?.55:.35);   // backbeat snares are tall pillars, ghost notes short ones
       c.fillStyle=hexA(col('snare'),(big?.12:.08)+.35*g);c.fillRect(x-w/2,top,w,G-top);c.lineWidth=2;c.strokeStyle=hexA(col('snare'),.95);c.strokeRect(x-w/2+1,top+1,w-2,G-top);
       if(big)wallFlash=Math.max(wallFlash,g)}
-    if(pat.clap[s]){c.fillStyle=hexA(col('clap'),.9+.1*g);const w=Math.max(3,S*.1),top=Hh*.5-g*Hh*.08;c.fillRect(x-S*.22-w/2,top,w,G-top);c.fillRect(x+S*.22-w/2,top,w,G-top)}
+    if(pat.brk[s]){const sl=brkSlice(pat.brk[s],s),sn=[4,7,9,12,15].includes(sl),kk=BREAK_KICKS.includes(sl),hh=(sn?.4:kk?.2:.11)*Hh*(1+.25*g),w=S*(kk?.62:.42);   // break slices hang from the top: snare hits long, kicks wide, ride-only short
+      c.fillStyle=hexA(col('brk'),.22+.5*g);c.fillRect(x-w/2,0,w,hh);c.lineWidth=2;c.strokeStyle=hexA(col('brk'),.95);c.strokeRect(x-w/2+1,-2,w-2,hh+1)}
     if(pat.hat[s]){const r=3+g*3;c.fillStyle=hexA(col('hat'),.85+.15*g);c.fillRect(x-r,Hh*.25-r,r*2,r*2)}
     if(pat.open[s]){const r=C*.22+g*C*.12;c.save();c.translate(x,Hh*.25);c.rotate(Math.PI/4);c.lineWidth=2;c.strokeStyle=hexA(col('open'),.85+.15*g);c.strokeRect(-r,-r,r*2,r*2);c.restore();
       if(g){c.beginPath();c.arc(x,Hh*.25,r*2.4*(1.2-g),0,7);c.strokeStyle=hexA(col('open'),.5*g);c.stroke()}}
@@ -687,7 +710,7 @@ function drawRun(){
     y=u<1?4*u*(1-u):0}
   const yb=y*JH;   // how high the cube's bottom is above the ground, in pixels
   // background: dark sky, pulse on the kick, grid sliding at half speed
-  const kickNow=pp&&pat.kick[stepOf(Math.floor(p))]&&p-Math.floor(p)<.35;
+  const kickNow=pp&&kickAt(pat,stepOf(Math.floor(p)))&&p-Math.floor(p)<.35;
   c.fillStyle='#0c0820';c.fillRect(0,0,W,Hh);
   if(kickNow){c.fillStyle='rgba(255,63,164,.12)';c.fillRect(0,0,W,G)}
   c.strokeStyle='rgba(124,104,230,.18)';c.lineWidth=1;const gs=S*.5;
@@ -702,7 +725,7 @@ function drawRun(){
   // spikes and coins
   const sw=C*.9,sh=C*.9,ghost=pp&&pp.T<RUN.ghostUntil;
   for(let k=Math.floor(p-x0/S)-1;k<p+(W-x0)/S+1;k++){const s=stepOf(k),x=x0+(k-p)*S;
-    if(pat.kick[s]&&!isSpk(k)){c.fillStyle='#ff3fa4';c.fillRect(x-C*.15,G-3,C*.3,4)}
+    if(kickAt(pat,s)&&!isSpk(k)){c.fillStyle='#ff3fa4';c.fillRect(x-C*.15,G-3,C*.3,4)}
     if(isSpk(k)){c.beginPath();c.moveTo(x-sw/2,G);c.lineTo(x,G-sh);c.lineTo(x+sw/2,G);c.closePath();
       c.fillStyle='#ff3fa4';c.fill();c.lineWidth=2;c.strokeStyle='#ffd0ea';c.stroke();
       c.beginPath();c.moveTo(x-sw/4,G);c.lineTo(x,G-sh/2);c.lineTo(x+sw/4,G);c.closePath();c.fillStyle='#0c0820';c.fill()}
@@ -755,7 +778,7 @@ function setNow(s){
   stepEls[s]&&stepEls[s].classList.add('now');IDS.forEach(id=>cellEls[id]&&cellEls[id][s].classList.add('now'));
   const pat=state.patterns[state.level];
   IDS.forEach(id=>{if(pat[id][s]&&!(build&&ctx.currentTime-build.t0>2.2&&(id==='kick'||id==='bass')))flashPad(id,'hit')});
-  if(pat.kick[s]){const u=$('unit');u.classList.add('thump');clearTimeout(u._t);u._t=setTimeout(()=>u.classList.remove('thump'),90)}
+  if(kickAt(pat,s)){const u=$('unit');u.classList.add('thump');clearTimeout(u._t);u._t=setTimeout(()=>u.classList.remove('thump'),90)}
 }
 function flashPad(id,cls){const b=padEls[id];if(!b)return;b.classList.add(cls);clearTimeout(b['_'+cls]);b['_'+cls]=setTimeout(()=>b.classList.remove(cls),cls==='hit'?90:120)}
 
@@ -807,7 +830,7 @@ function renderPads(){const box=$('pads');box.innerHTML='';padEls={};
     b.innerHTML=`<span class="ic" aria-hidden="true">${v.icon}</span><span class="nm">${v.name}</span>`;box.appendChild(b);padEls[v.id]=b})}
 let combo=0,lastTap=0,comboT;
 function hitPad(b){const id=b.dataset.id;
-  play(id,ctx.currentTime,.9,1,.45);flashPad(id,'down');
+  if(id==='brk')play('brk',ctx.currentTime,.95,0,8*BREAK_STEP);else play(id,ctx.currentTime,.9,1,.45);flashPad(id,'down');
   if(rec&&playing)recHit(id);
   const now=performance.now();combo=now-lastTap<900?combo+1:1;lastTap=now;
   const ce=$('combo');ce.textContent=combo>=5?`COMBO x${combo}`:'';clearTimeout(comboT);comboT=setTimeout(()=>{ce.textContent=''},1200);
@@ -827,23 +850,23 @@ function recHit(id){   // put a live tap on the nearest step
   row[best.s]=1;renderEditor();renderMatrix();save();award('rec');addXP(2)}
 // tapping a square: drums switch on/off; the bass goes low → middle → high → off
 function toggle(id,i){const row=state.patterns[state.level][id];snap();const was=row[i];row[i]=(row[i]+1)%(maxOf(id)+1);
-  if(row[i]&&!playing){ensureAudio();play(id,ctx.currentTime+.01,.85,row[i],.3)}
+  if(row[i]&&!playing){ensureAudio();if(id==='brk')play('brk',ctx.currentTime+.01,.95,brkSlice(row[i],i),2*BREAK_STEP);else play(id,ctx.currentTime+.01,.85,row[i],.3)}
   if(row[i]&&!was){state.placed++;addXP(2);if(state.placed>=10)award('builder')}
   patChanged()}
 function renderEditor(){const v=VC[state.sel],row=state.patterns[state.level][v.id];
   $('edName').innerHTML=`${v.icon} <em style="--c:${v.col}">${v.name}</em>`;
-  $('edHint').textContent=v.id==='bass'?'Tap a square: low, then middle, then high, then off.':'Tap a square to add or remove a sound.';
+  $('edHint').textContent=v.id==='bass'?'Tap a square: low, then middle, then high, then off.':v.id==='brk'?'Tap a square: break slice (●), then snare chop (S), then kick chop (K), then off.':'Tap a square to add or remove a sound.';
   const sb=$('steps');sb.innerHTML='';stepEls=[];
   for(let i=0;i<16;i++){const b=document.createElement('button'),n=row[i];
     b.className='step'+((i>>2)%2?'':' beat')+(n?' on':'')+(i===nowStep?' now':'');b.style.setProperty('--c',v.col);
-    b.setAttribute('aria-label',`Step ${i+1}`+(v.id==='bass'?`, ${['off','low','middle','high'][n]}`:''));b.setAttribute('aria-pressed',!!n);
-    b.innerHTML=v.id==='bass'?`<span>${i+1}</span><span class="bars"><u class="${n>=1?'lit':''}"></u><u class="${n>=2?'lit':''}"></u><u class="${n>=3?'lit':''}"></u></span>`:`<span>${i+1}</span><span></span>`;
+    b.setAttribute('aria-label',`Step ${i+1}`+(v.id==='bass'?`, ${['off','low','middle','high'][n]}`:v.id==='brk'?`, ${['off','break slice','snare chop','kick chop'][n]}`:''));b.setAttribute('aria-pressed',!!n);
+    b.innerHTML=v.id==='brk'?`<span>${i+1}</span><span class="chop">${['','●','S','K'][n]}</span>`:v.id==='bass'?`<span>${i+1}</span><span class="bars"><u class="${n>=1?'lit':''}"></u><u class="${n>=2?'lit':''}"></u><u class="${n>=3?'lit':''}"></u></span>`:`<span>${i+1}</span><span></span>`;
     b.onclick=()=>toggle(v.id,i);sb.appendChild(b);stepEls.push(b)}}
 function renderMatrix(){const box=$('matrix');box.innerHTML='';cellEls={};const pat=state.patterns[state.level];
   VOICES.forEach(v=>{const l=document.createElement('button');l.className='rl'+(state.sel===v.id?' sel':'');l.style.setProperty('--c',v.col);l.textContent=v.icon;l.setAttribute('aria-label',`Edit ${v.name}`);
     l.onclick=()=>{state.sel=v.id;renderPads();renderEditor();renderMatrix();save()};box.appendChild(l);cellEls[v.id]=[];
     for(let i=0;i<16;i++){const c=document.createElement('button'),n=pat[v.id][i];
-      c.className='cell'+((i>>2)%2?' q':'')+(n?' on':'')+(v.id==='bass'&&n===1?' lo':v.id==='bass'&&n===2?' mid':'')+(i===nowStep?' now':'');c.style.setProperty('--c',v.col);
+      c.className='cell'+((i>>2)%2?' q':'')+(n?' on':'')+(v.id==='bass'&&n===1?' lo':v.id==='bass'&&n===2?' mid':v.id==='brk'&&n===2?' mid':v.id==='brk'&&n===3?' lo':'')+(i===nowStep?' now':'');c.style.setProperty('--c',v.col);
       c.setAttribute('aria-label',`${v.name}, step ${i+1}`);c.onclick=()=>toggle(v.id,i);box.appendChild(c);cellEls[v.id].push(c)}})}
 
 /* surprise beat: a random drum & bass groove with a game sound or two */
@@ -852,18 +875,20 @@ function surprise(){snap();const R=Math.random,pick=a=>a[Math.floor(R()*a.length
   p.snare[4]=p.snare[12]=1;[7,9,14,15].forEach(i=>{if(R()<.22)p.snare[i]=1});
   p.hat=parseRow(pick(['x.x.x.x.x.x.x.x.','xxxxxxxxxxxxxxxx','x.xxx.x.x.xxx.x.','..x...x...x...x.']));
   if(R()<.5){const o=pick([6,14]);p.open[o]=1;p.hat[o]=0}
-  if(R()<.35)p.clap=parseRow('....x.......x...');
   p.kick.forEach((k,i)=>{if(k&&R()<.8)p.bass[i]=1+Math.floor(R()*3)});p.bass[pick([3,6,8,14])]=1+Math.floor(R()*3);
+  if(R()<.35){p.brk=Array(16).fill(1);[3,6,7,13,14,15].forEach(i=>{if(R()<.25)p.brk[i]=R()<.5?2:3});p.kick=blank();p.snare=blank();p.bass=blank();p.bass[0]=1+Math.floor(R()*3);p.bass[10]=1+Math.floor(R()*3)}
   const fxs=['coin','laser','power','jump','horn','boom'].sort(()=>R()-.5).slice(0,1+Math.floor(R()*2));
   fxs.forEach(id=>{if(id==='horn'||id==='boom')p[id][0]=1;else{p[id][pick([3,6,7,11,14,15])]=1;if(R()<.5)p[id][pick([2,10])]=1}});
   state.patterns[state.level]=p;patChanged();award('dice');if(!playing)start()}
 
 /* ---------- sharing ---------- */
-function beatCode(){const p=state.patterns[state.level];let h='';
-  IDS.forEach(id=>{if(id!=='bass'){let b=0;p[id].forEach((n,i)=>{if(n)b|=1<<i});h+=b.toString(16).padStart(4,'0')}});
-  return `z1.${state.bpm}.${h}${p.bass.join('')}`}
-function readBeat(c){const m=/^z1\.(\d{2,3})\.([0-9a-f]{44})([0-3]{16})$/.exec(c);if(!m)return null;const p={};let k=0;
-  IDS.forEach(id=>{if(id==='bass')p.bass=[...m[3]].map(Number);else{const b=parseInt(m[2].substr(k,4),16);k+=4;p[id]=Array.from({length:16},(_,i)=>b>>i&1)}});
+const MULTI=id=>maxOf(id)>1;
+function beatCode(){const p=state.patterns[state.level];let h='',d='';
+  IDS.forEach(id=>{if(MULTI(id))d+=p[id].join('');else{let b=0;p[id].forEach((n,i)=>{if(n)b|=1<<i});h+=b.toString(16).padStart(4,'0')}});
+  return `z2.${state.bpm}.${h}${d}`}
+function readBeat(c){const nb=IDS.filter(id=>!MULTI(id)).length,nm=IDS.length-nb;
+  const m=new RegExp(`^z2\\.(\\d{2,3})\\.([0-9a-f]{${nb*4}})([0-3]{${nm*16}})$`).exec(c);if(!m)return null;const p={};let k=0,j=0;
+  IDS.forEach(id=>{if(MULTI(id)){p[id]=[...m[3].substr(j,16)].map(Number);j+=16}else{const b=parseInt(m[2].substr(k,4),16);k+=4;p[id]=Array.from({length:16},(_,i)=>b>>i&1)}});
   return{bpm:Math.max(80,Math.min(200,+m[1])),p}}
 async function share(){const base=/github\.io$/.test(location.hostname)?location.origin+location.pathname:PAGES_URL,url=base+'#b='+beatCode();
   award('share');$('shareUrl').value=url;
