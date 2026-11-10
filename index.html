@@ -609,6 +609,36 @@ function runJump(){
   if(u>=1)RUN.jt=pp.T;else RUN.buffer=pp.T}   // pressed a little early: jump as soon as you land
 function crashSound(){if(!ctx)return;const t=ctx.currentTime,n=N(t,.3),lp=F('lowpass',1800,1),g=env(t,.35,.25,fxBus);n.connect(lp);lp.connect(g)}
 function burst(x,y,cols,n){for(let i=0;i<n;i++)RUN.parts.push({x,y,vx:(Math.random()-.5)*7,vy:-Math.random()*6-1,s:3+Math.random()*4,c:cols[i%cols.length],life:40})}
+/* the other instruments, drawn as lights that glow as they pass the cube (only spikes and coins are part of the game) */
+const hexA=(hex,a)=>{const n=parseInt(hex.slice(1),16);return`rgba(${n>>16},${n>>8&255},${n&255},${Math.max(0,Math.min(1,a)).toFixed(3)})`};
+const glowAt=(k,p)=>p>=k&&p<k+.7?1-(p-k)/.7:0;   // 1 as it reaches the cube, fading over most of a step
+function star(c,x,y,r,rot){c.beginPath();for(let i=0;i<10;i++){const a=rot+i*Math.PI/5-Math.PI/2,rr=i%2?r*.45:r;c.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr)}c.closePath()}
+// behind everything: the wall (snares, claps), the sky (hats, lasers, power ups, horns, booms)
+function decoBack(c,pat,p,W,Hh,G,C,S,x0){
+  const k0=Math.floor(p-x0/S)-2,k1=p+(W-x0)/S+2,col=id=>VC[id].col;let wallFlash=0,boomFlash=0;
+  for(let k=k0;k<k1;k++){const s=stepOf(k),x=x0+(k-p)*S,g=glowAt(k,p);
+    if(pat.snare[s]){const big=s===4||s===12,top=big?Hh*.12:Hh*.45,w=S*(big?.55:.35);   // backbeat snares are tall pillars, ghost notes short ones
+      c.fillStyle=hexA(col('snare'),(big?.12:.08)+.35*g);c.fillRect(x-w/2,top,w,G-top);c.lineWidth=2;c.strokeStyle=hexA(col('snare'),.95);c.strokeRect(x-w/2+1,top+1,w-2,G-top);
+      if(big)wallFlash=Math.max(wallFlash,g)}
+    if(pat.clap[s]){c.fillStyle=hexA(col('clap'),.9+.1*g);const w=Math.max(3,S*.1),top=Hh*.5-g*Hh*.08;c.fillRect(x-S*.22-w/2,top,w,G-top);c.fillRect(x+S*.22-w/2,top,w,G-top)}
+    if(pat.hat[s]){const r=3+g*3;c.fillStyle=hexA(col('hat'),.85+.15*g);c.fillRect(x-r,Hh*.25-r,r*2,r*2)}
+    if(pat.open[s]){const r=C*.22+g*C*.12;c.save();c.translate(x,Hh*.25);c.rotate(Math.PI/4);c.lineWidth=2;c.strokeStyle=hexA(col('open'),.85+.15*g);c.strokeRect(-r,-r,r*2,r*2);c.restore();
+      if(g){c.beginPath();c.arc(x,Hh*.25,r*2.4*(1.2-g),0,7);c.strokeStyle=hexA(col('open'),.5*g);c.stroke()}}
+    if(pat.laser[s]){const y=Hh*.42,len=S*1.4+g*W;c.fillStyle=hexA(col('laser'),.85+.15*g);c.fillRect(x-len,y-2,len+S*.3,4);c.fillStyle=hexA('#ffffff',.3+.6*g);c.fillRect(x-len,y-.5,len+S*.3,1)}
+    if(pat.power[s]){star(c,x,Hh*.34,C*(.28+.15*g),g*Math.PI);c.fillStyle=hexA(col('power'),.85+.15*g);c.fill()}
+    if(pat.horn[s]){c.lineWidth=2.5;for(let i=1;i<=3;i++){c.beginPath();c.arc(x,Hh*.46,C*(.18*i+.25*g),-.7,.7);c.strokeStyle=hexA(col('horn'),(.95-.15*i)+.2*g);c.stroke()}}
+    if(pat.boom[s]){const r=C*(.45+.5*g);star(c,x,Hh*.46,r,0);c.lineWidth=2;c.strokeStyle=hexA(col('boom'),.85+.15*g);c.stroke();boomFlash=Math.max(boomFlash,g)}}
+  if(wallFlash){c.fillStyle=hexA(col('snare'),.08*wallFlash);c.fillRect(0,0,W,G)}
+  if(boomFlash){c.fillStyle=hexA(col('boom'),.22*boomFlash);c.fillRect(0,0,W,G)}
+}
+// in the floor: the bass line (one glowing bar per note, taller for higher notes) and boing chevrons
+function decoFloor(c,pat,p,W,Hh,G,C,S,x0){
+  const k0=Math.floor(p-x0/S)-16,k1=p+(W-x0)/S+2,fh=Hh-G,bc=VC.bass.col,jc=VC.jump.col;
+  for(let k=k0;k<k1;k++){const s=stepOf(k),n=pat.bass[s];
+    if(n){let len=1;while(len<8&&!pat.bass[stepOf(k+len)])len++;const x=x0+(k-p)*S,g=p>=k&&p<k+len?1:0,h=fh*(.25+.17*n);
+      c.fillStyle=hexA(bc,.24+.24*g);c.fillRect(x-S*.3,G+4,len*S-3,h);c.fillStyle=hexA(bc,.8+.2*g);c.fillRect(x-S*.3,G+4,len*S-3,2)}
+    if(pat.jump[s]){const x=x0+(k-p)*S,g=glowAt(k,p),y=G+fh*.75-g*fh*.25;c.beginPath();c.moveTo(x-C*.3,y);c.lineTo(x,y-fh*.35);c.lineTo(x+C*.3,y);c.lineWidth=3;c.strokeStyle=hexA(jc,.85+.15*g);c.stroke()}}
+}
 function drawRun(){
   const W=rW,Hh=rH;if(!W||!Hh)return;
   const c=rx;c.setTransform(rDpr,0,0,rDpr,0,0);
@@ -629,8 +659,10 @@ function drawRun(){
   c.strokeStyle='rgba(124,104,230,.18)';c.lineWidth=1;const gs=S*.5;
   for(let x=x0-((p*S*.5)%gs+gs)%gs;x<W;x+=gs){c.beginPath();c.moveTo(x+.5,0);c.lineTo(x+.5,G);c.stroke()}
   for(let yy=G-gs;yy>0;yy-=gs){c.beginPath();c.moveTo(0,yy+.5);c.lineTo(W,yy+.5);c.stroke()}
+  decoBack(c,pat,p,W,Hh,G,C,S,x0);
   // floor with bar lines every 4 steps
   c.fillStyle='#1a1240';c.fillRect(0,G,W,Hh-G);
+  decoFloor(c,pat,p,W,Hh,G,C,S,x0);
   for(let k=Math.floor(p-x0/S)-1;k<p+W/S+1;k++){if(((stepOf(k)%4)+4)%4)continue;const x=x0+(k-p)*S;c.fillStyle=stepOf(k)===0?'rgba(39,225,255,.5)':'rgba(39,225,255,.18)';c.fillRect(Math.round(x),G,2,Hh-G)}
   c.fillStyle='rgba(39,225,255,.35)';c.fillRect(0,G-2,W,6);c.fillStyle='#27e1ff';c.fillRect(0,G,W,2);
   // spikes and coins

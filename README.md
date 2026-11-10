@@ -9,7 +9,11 @@ Play it: https://lamceol.github.io/ZK-88/
   plus game sounds: coin, laser, power up, boing, air horn and boom
 - **Beat Runner**: a neon cube runs along your beat. Kicks become spikes (one per beat at most,
   so every run can be cleared) and coin sounds become coins to grab. Press 🤖 Watch to see it run
-  by itself, or 🎮 Play to jump yourself with the big JUMP button (or tap the game, or press Space)
+  by itself, or 🎮 Play to jump yourself with the big JUMP button (or tap the game, or press Space).
+  Every other instrument shows up as a neon light that glows as it passes the cube: snare
+  pillars on the wall (tall on the backbeat, short for ghost notes), clap bars, hi-hat dots,
+  open-hat diamonds, laser beams, power-up stars, air-horn sound waves, boom bursts, the bass
+  line as glowing floor bars (taller for higher notes) and boing chevrons in the floor
 - 4 levels to start from: Two-Step, Amen Rush, Boss Battle and Coin Cave
 - Hold **DROP** for a build-up (filter sweep, whoosh and a speeding-up snare roll), let go for the drop
 - **Surprise** makes a random drum & bass beat
