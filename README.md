@@ -27,11 +27,12 @@ Play it: https://lamceol.github.io/ZK-88/
 - Works offline once loaded; on iPhone or iPad use Share → Add to Home Screen
 
 The kick, snare, hi-hats and break are real drum recordings from Karoryfer Samples' **Unruly
-Drums**, which is public domain (CC0). See [samples/README.md](samples/README.md) for how they were
-made. The break borrows the famous Amen rhythm, played on that kit; it is not the original
-recording. Every other sound (the reese bass, game sounds, air horn, build-up) is made live with
-the Web Audio API, and the mix is built like a drum & bass track: the bass dips under each kick,
-the drums are compressed together, and snares play loud on the backbeat with quiet ghost notes
-in between.
+Drums**. The air horn (real trumpets), boom, coin and power up use **VSCO 2 Community Edition**
+orchestral recordings, and the laser and explosions come from **Kenney's Sci-Fi Sounds**. All of
+them are public domain (CC0); see [samples/README.md](samples/README.md) for how each was made. The
+break borrows the famous Amen rhythm, played on that kit; it is not the original recording. The
+reese bass, boing and build-up are made live with the Web Audio API, and the mix is built like a
+drum & bass track: the bass dips under each kick, the drums are compressed together, and snares
+play loud on the backbeat with quiet ghost notes in between.
 
 Fonts: Press Start 2P and Baloo 2, both under the SIL Open Font License.

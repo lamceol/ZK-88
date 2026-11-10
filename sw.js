@@ -1,10 +1,11 @@
 /* ZK-88 offline support: keeps a copy of the app on the device.
    Online it fetches the latest version first (and refreshes the copy); offline it uses the copy. */
-const CACHE='zk88-v8';
+const CACHE='zk88-v9';
 const bust=u=>{const x=new URL(u);x.searchParams.set('_',Date.now());return x.href};
 const CORE=['./','index.html','manifest.webmanifest','fonts/fonts.css','fonts/Baloo2.woff2','fonts/PressStart2P-400.woff2',
   'icons/apple-touch-icon.png','icons/icon-192.png','icons/icon-512.png',
-  ...['kick1','kick2','kick_soft','snare1','snare2','snare_mid','snare_ghost','hat','hat_soft','open','break'].map(n=>'samples/'+n+'.wav')];
+  ...['kick1','kick2','kick_soft','snare1','snare2','snare_mid','snare_ghost','hat','hat_soft','open','break',
+    'horn_short','horn_long','boom','laser','coin','power'].map(n=>'samples/'+n+'.wav')];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',e=>{

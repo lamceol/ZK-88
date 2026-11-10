@@ -433,9 +433,10 @@ function makeKick(sr,seed){
 function makeKit(){const sr=ctx.sampleRate,buf=a=>{const b=ctx.createBuffer(1,a.length,sr);b.getChannelData(0).set(a);return b};
   KIT.kick=[1,2,3,4].map(s=>buf(makeKick(sr,s)));KIT.snare=[11,12,13,14].map(s=>buf(makeSnare(sr,s)))}
 const take=a=>a[Math.floor(Math.random()*a.length)];
-/* recorded drums from Karoryfer Samples' "Unruly Drums" (CC0, see samples/README.md). They download straight away
-   and are ready by the first tap; until then the built-in kick, snare and hats stand in */
-const SMP={},SMP_FILES=['kick1','kick2','kick_soft','snare1','snare2','snare_mid','snare_ghost','hat','hat_soft','open','break'];
+/* recordings (all public domain, see samples/README.md): drums from Karoryfer Samples' "Unruly Drums"; horn, boom,
+   coin and power up from VSCO 2 Community Edition and Kenney's Sci-Fi Sounds. They download straight away and are
+   ready by the first tap; until then the built-in sounds stand in */
+const SMP={},SMP_FILES=['kick1','kick2','kick_soft','snare1','snare2','snare_mid','snare_ghost','hat','hat_soft','open','break','horn_short','horn_long','boom','laser','coin','power'];
 const smpData=SMP_FILES.map(n=>fetch('samples/'+n+'.wav').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null));
 let smpStarted=false;
 function loadSamples(){if(smpStarted)return;smpStarted=true;const c=ctx;
@@ -521,16 +522,19 @@ const SYN={
     [[-16,-.6],[16,.6],[-4,0]].forEach(([c,p])=>{const o=O('sawtooth',f,t,end);o.detune.value=c;pan(o,p,lp1)});
     const sub=O('sine',f/2,t,end),sg=ctx.createGain();sg.gain.value=.9;sub.connect(sg);sg.connect(g);
     bassNote={g,end}},
-  coin(t,v){   // sparkly bell, two notes
+  coin(t,v){   // glockenspiel, B then E
+    if(SMP.coin){const g=sbuf(SMP.coin,t,.5*v/.9,fxBus);send(g,.22,.15);return}
     [[987.77,0],[1318.5,.075]].forEach(([f,d])=>{const tt=t+d,o=O('sine',f,tt,tt+.8),m=O('sine',f*3.5,tt,tt+.8),mg=ctx.createGain();
       mg.gain.setValueAtTime(f*1.2,tt);mg.gain.exponentialRampToValueAtTime(1,tt+.3);m.connect(mg);mg.connect(o.frequency);
       const g=env(tt,v*(d?.32:.24),d?.6:.12,fxBus);o.connect(g);send(g,.3,.25)})},
-  laser(t,v){   // sci-fi zap
+  laser(t,v){   // sci-fi laser
+    if(SMP.laser){const g=sbuf(SMP.laser,t,.55*v/.85,fxBus,.3);send(g,.18,.25);return}
     const o=O('sawtooth',2600,t,t+.35);o.frequency.exponentialRampToValueAtTime(90,t+.28);
     const m=O('sine',60,t,t+.35),mg=ctx.createGain();mg.gain.value=300;m.connect(mg);mg.connect(o.frequency);
     const bp=F('bandpass',4000,6);bp.frequency.setValueAtTime(4000,t);bp.frequency.exponentialRampToValueAtTime(300,t+.28);
     const g=ctx.createGain();g.gain.setValueAtTime(v*3,t);g.gain.exponentialRampToValueAtTime(.0001,t+.3);o.connect(bp);bp.connect(g);pan(g,.3,fxBus);send(g,.25,.3)},
-  power(t,v){   // rising supersaw sweep
+  power(t,v){   // glockenspiel run upwards
+    if(SMP.power){const g=sbuf(SMP.power,t,.6*v/.85,fxBus);send(g,.25,.15);return}
     const end=t+.55,lp=F('lowpass',300,4),g=ctx.createGain();lp.frequency.setValueAtTime(300,t);lp.frequency.exponentialRampToValueAtTime(8000,t+.45);
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v*.15,t+.05);g.gain.setValueAtTime(v*.15,t+.4);g.gain.exponentialRampToValueAtTime(.0001,end);
     [-12,0,12].forEach((c,i)=>{const o=O('sawtooth',220,t,end+.02);o.detune.value=c;o.frequency.exponentialRampToValueAtTime(880,t+.45);pan(o,(i-1)*.7,lp)});
@@ -539,7 +543,9 @@ const SYN={
     const o=O('triangle',140,t,t+.35);o.frequency.exponentialRampToValueAtTime(520,t+.12);o.frequency.exponentialRampToValueAtTime(470,t+.3);
     const m=O('sine',18,t,t+.35),mg=ctx.createGain();mg.gain.value=25;m.connect(mg);mg.connect(o.frequency);
     const lp=F('lowpass',2200),g=env(t,v*.8,.3,fxBus);o.connect(lp);lp.connect(g);send(g,.2,.2)},
-  horn(t,v){   // sound-system air horn tuned to E: "bap, bap, baaap" in time with the beat, brassy rather than buzzy
+  horn(t,v){   // sound-system air horn tuned to E: "bap, bap, baaap" on eighth notes, in time with the beat
+    if(SMP.horn_short){const sd=stepDur(),blast=Math.max(.07,1.6*sd),gn=.6*v/.85;
+      [0,2*sd].forEach(d=>send(sbuf(SMP.horn_short,t+d,gn,fxBus,.15,0,blast),.2,.12));send(sbuf(SMP.horn_long,t+4*sd,gn,fxBus,.15),.22,.15);return}
     const sd=stepDur(),hb=ctx.createGain(),hp=F('highpass',220),pk=F('peaking',1100,1),lp=F('lowpass',2400,.6),lp2=F('lowpass',5000,.7),og=ctx.createGain();
     pk.gain.value=3;og.gain.value=v*.15;hb.connect(hp);hp.connect(pk);pk.connect(lp);lp.connect(lp2);lp2.connect(og);pan(og,.15,fxBus);send(og,.22,.18);
     [[0,.5*sd],[sd,.5*sd],[2*sd,3.2*sd]].forEach(([d,len],i)=>{const tt=t+d,end=tt+len,g=ctx.createGain();
@@ -547,7 +553,8 @@ const SYN={
       [[329.63,-5],[329.63,6],[493.88,0],[659.25,3]].forEach(([f,c])=>{const o=O('sawtooth',f,tt,end+.1);o.detune.setValueAtTime(c,tt);
         if(i===2){o.detune.setValueAtTime(c,end-.12);o.detune.linearRampToValueAtTime(c-100,end+.06)}   // the last blast sags at the end
         const og2=ctx.createGain();og2.gain.value=f>600?.5:1;o.connect(og2);og2.connect(g)})})},
-  boom(t,v){   // cinematic impact: falling sub, noise blast and a big room
+  boom(t,v){   // cinematic impact: bass drum, low explosion, timpani, gong and a sub drop
+    if(SMP.boom){const g=sbuf(SMP.boom,t,.9*v/.85,fxBus);send(g,.25);duck(t);return}
     const o=O('sine',110,t,t+1.2);o.frequency.exponentialRampToValueAtTime(32,t+.9);const sh=shaper(2),og=env(t,v*.85,1.1,fxBus);o.connect(sh);sh.connect(og);
     const n=N(t,1.3),lp=F('lowpass',4000,.7);lp.frequency.setValueAtTime(4000,t);lp.frequency.exponentialRampToValueAtTime(80,t+1);
     const ng=env(t,v*.7,1.1,fxBus);n.connect(lp);lp.connect(ng);send(ng,.5);send(og,.2);duck(t)}
