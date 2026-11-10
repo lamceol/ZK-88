@@ -1,6 +1,6 @@
 /* ZK-88 offline support: keeps a copy of the app on the device.
    Online it fetches the latest version first (and refreshes the copy); offline it uses the copy. */
-const CACHE='zk88-v6';
+const CACHE='zk88-v7';
 const bust=u=>{const x=new URL(u);x.searchParams.set('_',Date.now());return x.href};
 const CORE=['./','index.html','manifest.webmanifest','fonts/fonts.css','fonts/Baloo2.woff2','fonts/PressStart2P-400.woff2',
   'icons/apple-touch-icon.png','icons/icon-192.png','icons/icon-512.png'];

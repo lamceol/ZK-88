@@ -389,6 +389,47 @@ function makeIR(sec){const n=Math.floor(ctx.sampleRate*sec),b=ctx.createBuffer(2
 // six square waves at clashing pitches: the metallic ring of a drum-machine hi-hat
 function makeMetal(){const sr=ctx.sampleRate,b=ctx.createBuffer(1,sr,sr),d=b.getChannelData(0),fs=[205.3,304.4,369.6,522.7,540,800].map(f=>f*1.9);
   for(let i=0;i<sr;i++){let s=0;for(const f of fs)s+=(i*f/sr)%1<.5?1:-1;d[i]=s/6}return b}
+/* kick and snare: built once like recorded drums (a drum skin's uneven ring, the stick or beater hit,
+   snare wires, a small room), a few takes of each, then played back like samples */
+const KIT={kick:[],snare:[]};
+function rng(seed){let a=seed*2654435761>>>0;return()=>{a=a+0x6D2B79F5>>>0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+function arrBQ(x,type,f,Q,sr){   // a filter run over an array
+  const w=2*Math.PI*f/sr,c=Math.cos(w),al=Math.sin(w)/(2*Q);let b0,b1,b2;
+  if(type==='hp'){b0=(1+c)/2;b1=-(1+c);b2=b0}else if(type==='lp'){b0=(1-c)/2;b1=1-c;b2=b0}else{b0=al;b1=0;b2=-al}
+  const a0=1+al,a1=-2*c/a0,a2=(1-al)/a0;b0/=a0;b1/=a0;b2/=a0;let x1=0,x2=0,y1=0,y2=0;
+  for(let i=0;i<x.length;i++){const xi=x[i],y=b0*xi+b1*x1+b2*x2-a1*y1-a2*y2;x2=x1;x1=xi;y2=y1;y1=y;x[i]=y}return x}
+function norm(x,to=1){let pk=0;for(const v of x)pk=Math.max(pk,Math.abs(v));if(pk)for(let i=0;i<x.length;i++)x[i]*=to/pk;return x}
+function tailFade(x,sr,sec){const m=Math.floor(sr*sec),n=x.length;for(let i=n-m;i<n;i++){const u=(n-i)/m;x[i]*=u*u}return x}
+function sat(x,k){const n=Math.tanh(k);for(let i=0;i<x.length;i++)x[i]=Math.tanh(k*x[i])/n;return x}
+function room(x,sr,amt){   // early reflections off nearby walls, a little darker than the drum
+  const taps=[[.009,.34],[.014,-.28],[.021,.22],[.029,-.17],[.038,.13],[.051,-.09],[.066,.06]],wet=new Float32Array(x.length);
+  for(const [d,g] of taps){const o=Math.round(d*sr);for(let i=o;i<x.length;i++)wet[i]+=x[i-o]*g}
+  let lp=0;for(let i=0;i<x.length;i++){lp+=.3*(wet[i]-lp);x[i]+=lp*amt}return x}
+function membrane(n,sr,f0,modes,drop,dropT,R){   // a drum skin: several uneven pitches, each fading at its own speed
+  const out=new Float32Array(n);
+  for(const [r,a,d] of modes){let ph=R()*6.283;const f=f0*r;for(let i=0;i<n;i++){const t=i/sr;ph+=6.283*f*(1+drop*Math.exp(-t/dropT))/sr;out[i]+=a*Math.exp(-t/d)*Math.sin(ph)}}
+  return out}
+function makeSnare(sr,seed){
+  const R=rng(seed),n=Math.floor(sr*.4),f0=184+R()*12;
+  const body=norm(membrane(n,sr,f0,[[1,1,.1],[1.59,.6,.07],[2.14,.5,.055],[2.3,.4,.05],[2.65,.32,.042],[2.92,.25,.036],[3.16,.2,.03],[3.5,.15,.026]],.06,.012,R));
+  const wn=new Float32Array(n);for(let i=0;i<n;i++)wn[i]=R()*2-1;
+  const wires=norm(arrBQ(arrBQ(arrBQ(wn,'hp',1500,.7,sr),'bp',3800,.8,sr),'lp',9000,.7,sr));
+  for(let i=0;i<n;i++){const t=i/sr;wires[i]*=(1-Math.exp(-t/.0025))*(.8*Math.exp(-t/.055)+.2*Math.exp(-t/.11))}
+  const sk=new Float32Array(n),sl=Math.floor(sr*.004);for(let i=0;i<sl;i++)sk[i]=(R()*2-1)*(1-i/sl);
+  const stick=norm(arrBQ(sk,'hp',2200,.7,sr));
+  const x=new Float32Array(n);for(let i=0;i<n;i++)x[i]=body[i]*.9+wires[i]*1.25+stick[i]*.6;
+  return tailFade(norm(room(sat(norm(x),1.5),sr,.55),.95),sr,.12)}
+function makeKick(sr,seed){
+  const R=rng(seed),n=Math.floor(sr*.3),f0=52+R()*5;
+  // a short pitch drop and a quick fade: a real kick's thud, not a long electronic boom
+  const body=membrane(n,sr,f0,[[1,1,.065],[1.59,.6,.045],[2.14,.6,.035],[2.7,.55,.028],[3.5,.7,.02],[4.4,.55,.015],[5.4,.35,.011]],1.2,.011,R);
+  const cn=new Float32Array(n),cl=Math.floor(sr*.003);for(let i=0;i<cl;i++)cn[i]=(R()*2-1)*(1-i/cl);
+  const click=norm(arrBQ(arrBQ(cn,'bp',3200,.9,sr),'hp',1200,.7,sr));
+  const x=norm(body);for(let i=0;i<n;i++){const t=i/sr;x[i]+=click[i]*.4+.15*Math.exp(-t/.005)*Math.sin(6.283*1600*t)}
+  return tailFade(norm(room(sat(norm(x),1.2),sr,.15),.95),sr,.08)}
+function makeKit(){const sr=ctx.sampleRate,buf=a=>{const b=ctx.createBuffer(1,a.length,sr);b.getChannelData(0).set(a);return b};
+  KIT.kick=[1,2,3,4].map(s=>buf(makeKick(sr,s)));KIT.snare=[11,12,13,14].map(s=>buf(makeSnare(sr,s)))}
+const take=a=>a[Math.floor(Math.random()*a.length)];
 function buildGraph(dest){
   bus=ctx.createGain();
   lpf=ctx.createBiquadFilter();lpf.type='lowpass';lpf.frequency.value=20000;lpf.Q.value=.8;   // the build-up filter
@@ -412,7 +453,7 @@ function buildGraph(dest){
   setEcho();
   noiseBuf=ctx.createBuffer(1,ctx.sampleRate*3,ctx.sampleRate);
   const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
-  metalBuf=makeMetal();openHat=bassNote=null;
+  metalBuf=makeMetal();makeKit();openHat=bassNote=null;
 }
 function ensureAudio(){
   if(!ctx){
@@ -439,22 +480,10 @@ function metal(t,v,dec,p){   // crisp hats: bright noise, with a little metallic
   pan(g,p,drumBus);send(g,.05);return g}
 const BASS_HZ=[0,82.41,98,110];   // E, G, A
 const SYN={
-  kick(t,v){   // punchy: fast pitch drop into a short, tight boom, with a beater click on top
-    const o=O('sine',260,t,t+.45);o.frequency.exponentialRampToValueAtTime(62,t+.035);o.frequency.exponentialRampToValueAtTime(48,t+.25);
-    const g=ctx.createGain();g.gain.setValueAtTime(v,t);g.gain.setValueAtTime(v,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+.34);
-    const sh=shaper(2.2);o.connect(sh);sh.connect(g);g.connect(drumBus);
-    const c=O('triangle',1800,t,t+.03);c.frequency.exponentialRampToValueAtTime(400,t+.012);c.connect(env(t,v*.3,.014,drumBus));
-    const n=N(t,.02),hp=F('highpass',3500);n.connect(hp);hp.connect(env(t,v*.22,.01,drumBus));
-    duck(t)},
-  snare(t,v){   // layered drum & bass snare: tuned body, short bright rattle, a tiny clap for the crack, and room
-    const sb=ctx.createGain(),sh=shaper(1.3),o2=ctx.createGain();o2.gain.value=1.1;sb.connect(sh);sh.connect(o2);o2.connect(drumBus);send(o2,.2);
-    const a=O('triangle',215,t,t+.2);a.frequency.exponentialRampToValueAtTime(186,t+.03);a.connect(env(t,v*.75,.1,sb));
-    const b=O('sine',335,t,t+.1);b.frequency.exponentialRampToValueAtTime(292,t+.025);b.connect(env(t,v*.3,.05,sb));
-    const n=N(t,.25),hp=F('highpass',1800),pk=F('peaking',5200,.8),lp=F('lowpass',12000,.7);pk.gain.value=4;n.connect(hp);hp.connect(pk);pk.connect(lp);
-    const ng=ctx.createGain();ng.gain.setValueAtTime(v*.8,t);ng.gain.exponentialRampToValueAtTime(v*.2,t+.035);ng.gain.exponentialRampToValueAtTime(.0005,t+.17);lp.connect(ng);ng.connect(sb);
-    const n3=N(t,.08),bp=F('bandpass',2200,1.2),cg=ctx.createGain();cg.gain.setValueAtTime(.0001,t);
-    [0,.006,.012].forEach(d=>{cg.gain.setValueAtTime(v*.55,t+d);cg.gain.exponentialRampToValueAtTime(v*.08,t+d+.005)});cg.gain.exponentialRampToValueAtTime(.0001,t+.06);
-    n3.connect(bp);bp.connect(cg);cg.connect(sb)},
+  kick(t,v){const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=take(KIT.kick);g.gain.value=v*1.05;s.connect(g);g.connect(drumBus);s.start(t);duck(t)},
+  snare(t,v){   // quiet ghost notes are softer and darker, like a drummer playing lightly
+    const ghost=v<.6,s=ctx.createBufferSource(),lp=F('lowpass',ghost?3800:16000,.7),g=ctx.createGain();s.buffer=take(KIT.snare);
+    g.gain.value=v*1.05;s.connect(lp);lp.connect(g);g.connect(drumBus);send(g,ghost?.06:.17);s.start(t)},
   hat(t,v){fade(openHat,t);metal(t,v*.4,.04,.25)},
   open(t,v){fade(openHat,t);openHat={g:metal(t,v*.16,.32,.25),end:t+.5}},
   clap(t,v){const n=N(t,.4),hp=F('highpass',600),bp=F('bandpass',1400,.9),g=ctx.createGain();g.gain.setValueAtTime(.0001,t);
@@ -508,12 +537,12 @@ function jingle(){   // badge sound: straight to the speakers, not through the b
     g.gain.setValueAtTime(.12,t+i*.07);g.gain.exponentialRampToValueAtTime(.0001,t+i*.07+.3);o.connect(g);g.connect(out)})}
 // play a pattern into an audio buffer without touching the speakers (used to check levels)
 async function render(bars=2,pat=state.patterns[state.level]){
-  const keep={ctx,bus,lpf,comp,out,drumBus,bassBus,fxBus,revIn,echoIn,echoDelay,noiseBuf,metalBuf,openHat,bassNote};
+  const keep={ctx,bus,lpf,comp,out,drumBus,bassBus,fxBus,revIn,echoIn,echoDelay,noiseBuf,metalBuf,openHat,bassNote},keepKit={...KIT};
   const sr=44100,oc=new OfflineAudioContext(2,Math.ceil((bars*16*stepDur()+1.5)*sr),sr);
   ctx=oc;buildGraph(oc.destination);for(let i=0;i<bars*16;i++)stepSounds(pat,i%16,.01+i*stepDur());
-  ({ctx,bus,lpf,comp,out,drumBus,bassBus,fxBus,revIn,echoIn,echoDelay,noiseBuf,metalBuf,openHat,bassNote}=keep);
+  ({ctx,bus,lpf,comp,out,drumBus,bassBus,fxBus,revIn,echoIn,echoDelay,noiseBuf,metalBuf,openHat,bassNote}=keep);Object.assign(KIT,keepKit);
   return oc.startRendering()}
-window.ZK88={render};
+window.ZK88={render,kit:()=>KIT};
 
 /* ---------- sequencer ---------- */
 let playing=false,timer,step=0,nextTime=0,queue=[],heard=[],rec=false,recSnapped=false,nowStep=-1,pendingLevel=null,dropNext=false,build=null,wake=null;
